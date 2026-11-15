@@ -7,7 +7,7 @@
   const state = { params: null, records: [], busy: false, cancel: false, current: 0 };
 
   const WEEKDAY_DEFAULT = [1, 3, 5];
-  const MAP_MODE_LABEL = { procedural: '离线底图', auto: '自动底图', tiles: '真实瓦片', satellite: '卫星影像', googlesat: 'Google 卫星' };
+  const MAP_MODE_LABEL = { procedural: '离线底图', auto: '自动底图', tiles: '真实瓦片', satellite: '卫星影像', gaodesat: '高德卫星', googlesat: 'Google 卫星' };
 
   /* ---------------- 初始化 ---------------- */
 
@@ -483,7 +483,7 @@
       routes,
       customTrack,
       mapMode: custom
-        ? (window.MapPicker.base() === 'street' ? 'tiles' : window.MapPicker.base() === 'google' ? 'googlesat' : 'satellite')
+        ? ({ street: 'tiles', google: 'googlesat', gaode: 'gaodesat' }[window.MapPicker.base()] || 'satellite')
         : $('#mapMode').value,
       location: custom ? 'custom' : $('#location').value,
       tagText: $('#tagText').value,

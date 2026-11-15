@@ -21,6 +21,15 @@
     { id: 'esri', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr: '© Esri · Maxar · Earthstar Geographics' }
   ];
 
+  // 高德卫星影像（style=6，同为 Web Mercator 256px 切片）：境内直连快、层级深，纯影像无注记。
+  // 返回 ACAO:*（已实测），画布不被污染，能正常导出成品图。
+  // 境外无覆盖：返回一张固定的中灰「无影像」图（HTTP 仍 200），由 looksLikePlaceholder
+  // 识别后整图判定为失败，自动落到末尾的 Esri 影像。
+  const GAODE_SAT = [
+    { id: 'gaode', url: 'https://webst01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=6&x={x}&y={y}&z={z}', attr: '© 高德地图' },
+    { id: 'esri', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr: '© Esri · Maxar · Earthstar Geographics' }
+  ];
+
   // Google 卫星影像（lyrs=s，Web Mercator 切片）。Google 瓦片服务器通常不带 CORS 头，
   // 故 loadTile 对 google 域名不设 crossOrigin。国内直连不了时末尾 Esri 影像自动兜底。
   const GOOGLE_SAT = [
@@ -38,21 +47,58 @@
     return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, z);
   }
 
+  // 「没有数据」时有些源不报错，而是回一张合法的占位图（HTTP 200、能 onload），
+  // 于是既不会触发 onerror、也不会触发兜底源，成品图里就是一片灰格。识别特征：
+  //   Esri 超出覆盖层级 → 浅灰「Map data not yet available」（近乎纯色的浅灰）；
+  //   高德卫星境外区域   → 固定的中灰图（亮度约 132，比 Esri 那张暗得多）。
+  // 真实影像/路网的亮度标准差远大于阈值，不会误判。Google 不设 crossOrigin，
+  // 读像素会抛 SecurityError，这里 catch 后按「不是占位图」放行即可。
+  function looksLikePlaceholder(url, img) {
+    const isEsri = url.indexOf('arcgisonline.com') >= 0;
+    const isGaodeSat = url.indexOf('is.autonavi.com') >= 0 && url.indexOf('style=6') >= 0;
+    if (!isEsri && !isGaodeSat) return false;
+    try {
+      const S = 8;
+      const c = document.createElement('canvas');
+      c.width = S; c.height = S;
+      const x = c.getContext('2d');
+      x.drawImage(img, 0, 0, S, S);
+      const d = x.getImageData(0, 0, S, S).data;
+      let sum = 0; const ls = [];
+      for (let i = 0; i < d.length; i += 4) {
+        const l = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        ls.push(l); sum += l;
+      }
+      const mean = sum / ls.length;
+      let v = 0;
+      for (const l of ls) v += (l - mean) * (l - mean);
+      const std = Math.sqrt(v / ls.length);
+      return isEsri ? (std < 8 && mean > 200 && mean < 250)
+                    : (std < 12 && mean > 90 && mean < 200);
+    } catch (e) { return false; }
+  }
+
   function loadTile(provider, z, x, y) {
     const key = provider.id + '/' + z + '/' + x + '/' + y;
     if (cache.has(key)) return cache.get(key);
     const p = new Promise((resolve, reject) => {
       const img = new Image();
+      const url = provider.url.replace('{z}', z).replace('{x}', x).replace('{y}', y);
       let done = false;
       const timer = setTimeout(() => { if (!done) { done = true; cache.delete(key); reject(new Error('timeout')); } }, 8000);
       // 本文件负责导出成品图，画布绝不能被污染：canvas.toBlob() 在 tainted 状态下返回 null，
       // toDataURL() 直接抛 SecurityError，用户点下载只会看到「导出失败」。
-      // 规则：凡返回 ACAO 头的源（Esri / OSM，已 curl 实测）一律 anonymous；
+      // 规则：凡返回 ACAO 头的源（Esri / 高德 / OSM，已 curl 实测）一律 anonymous；
       //       Google 不返回 CORS 头，只能 null——所以 Google 影像模式导出不可用。
-      img.crossOrigin = (provider.url.indexOf('google.com') >= 0) ? null : 'anonymous';
-      img.onload = () => { if (!done) { done = true; clearTimeout(timer); resolve(img); } };
+      img.crossOrigin = (url.indexOf('google.com') >= 0) ? null : 'anonymous';
+      img.onload = () => {
+        if (done) return;
+        done = true; clearTimeout(timer);
+        if (looksLikePlaceholder(url, img)) { cache.delete(key); reject(new Error('placeholder')); }
+        else resolve(img);
+      };
       img.onerror = () => { if (!done) { done = true; clearTimeout(timer); cache.delete(key); reject(new Error('tile-error')); } };
-      img.src = provider.url.replace('{z}', z).replace('{x}', x).replace('{y}', y);
+      img.src = url;
     });
     cache.set(key, p);
     return p;
@@ -138,6 +184,7 @@
   async function draw(ctx, view, record, opts) {
     if (disabled) return false;
     const list = (opts && opts.mapMode === 'satellite') ? SAT_PROVIDERS
+      : (opts && opts.mapMode === 'gaodesat') ? GAODE_SAT
       : (opts && opts.mapMode === 'googlesat') ? GOOGLE_SAT
       : PROVIDERS;
     for (let i = 0; i < list.length; i++) {

@@ -6,8 +6,8 @@
   const MAP_Y = 204, MAP_H = 240;
 
   // 需要走真实瓦片的模式；procedural 不在其中（直接画离线底图）。
-  // 用集合而不是逐个 === 比较，避免新增模式（如 googlesat）时漏判导致静默退回离线图。
-  const TILE_MODES = { tiles: 1, auto: 1, satellite: 1, googlesat: 1 };
+  // 用集合而不是逐个 === 比较，避免新增模式（如 googlesat / gaodesat）时漏判导致静默退回离线图。
+  const TILE_MODES = { tiles: 1, auto: 1, satellite: 1, gaodesat: 1, googlesat: 1 };
 
   const F = '"SF Pro Display","PingFang SC","HarmonyOS Sans","Microsoft YaHei","Helvetica Neue",Arial,sans-serif';
   const FN = '"DIN Alternate","SF Pro Display","PingFang SC","Helvetica Neue",Arial,sans-serif';

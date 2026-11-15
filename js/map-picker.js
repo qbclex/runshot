@@ -1,7 +1,7 @@
 /* 自定义地图选点器：电子中国地图上找位置 + 沿跑步路线手绘轨迹
    底图（免密钥公开瓦片服务）：
-     卫星 = Esri World Imagery；电子(街道) = Esri 街道图优先 + OpenStreetMap 兜底。
-   选 Esri 优先是因为它在国内可直连、速度快；OSM 常被限速/拦截，故仅作兜底。 */
+     卫星 = Esri World Imagery / 高德卫星影像；电子(街道) = 高德路网图优先 + Esri 街道图 / OSM 兜底。
+   国内地点优先高德（可直连；路网层的中文注记最全），全球覆盖与兜底交给 Esri。 */
 (function (global) {
   'use strict';
 
@@ -14,16 +14,22 @@
     // 电子（街道）图：高德路网图优先（国内直连、中文标注最详细），Esri 街道图 + OSM 兜底。
     // 高德公开瓦片接口 is.autonavi.com/appmaptile 免 key 可用且返回 ACAO:*（已实测），
     // 故按 loadTile 的规则走 crossOrigin='anonymous'，画布不被污染、可正常导出。
-    // 注：仅取高德的街道/路网图层（style=7），不接其卫星层。
     street: [
       'https://wprd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}',
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
       'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
     ],
+    // 高德卫星影像（style=6）：同样是 Web Mercator 256px 切片，境内直连快、层级够深。
+    // 境外没有覆盖：返回的是一张固定的中灰「无影像」图（不同 x/y/z 字节完全相同，已实测
+    // mean≈132 / std≈1.5），HTTP 仍是 200，所以靠 looksLikePlaceholder 识别后落到 Esri。
+    gaode: [
+      'https://webst01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=6&x={x}&y={y}&z={z}',
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+    ],
     // Google 卫星影像：与 Esri/OSM 同为 Web Mercator 切片（256px, z/x/y）。
     // 注意：① Google 不返回 CORS 头，loadTile 仅对 google 域名设 crossOrigin=null
     //        （设 anonymous 会导致图片根本加载不出来）；代价是 Google 模式画布被污染、
-    //        无法导出成品图，需要导出时请改用「卫星（Esri）」或「电子地图（高德）」；
+    //        无法导出成品图，需要导出时请改用「卫星（Esri）」「卫星（高德）」或「电子地图」；
     //      ② 国内网络通常直连不了 mt.google.com，故末尾追加 Esri 影像作兜底——
     //         Google 可达时用 Google，不可达时自动回退到 Esri（可配 VPN 走 Google）。
     google: [
@@ -51,11 +57,16 @@
 
   /* ---------------- 瓦片 ---------------- */
 
-  // Esri 在超出其覆盖范围的层级（如国内某些地区 z18+）会返回一张“合法”的
-  // 浅灰占位图（写着 Map data not yet available），HTTP 状态是 200、图片也能 onload，
-  // 因此不会触发 onerror、也不会触发兜底源。这里用“整体近乎纯色的浅灰”来识别它
-  // （少量深色文字不影响统计），识别到就当作失败处理，让 OSM 兜底源有机会补上真实瓦片。
-  function looksLikeEsriPlaceholder(img) {
+  // 有些源在「没有数据」时不报错，而是返回一张合法的占位图（HTTP 200、能 onload），
+  // 于是既不会触发 onerror、也不会触发兜底源。这里按源各自的特征识别，识别到就当作
+  // 失败处理，让下一源有机会补上真实瓦片：
+  //   Esri 超出覆盖层级 → 浅灰「Map data not yet available」（近乎纯色的浅灰）；
+  //   高德卫星境外区域   → 固定的中灰图（亮度约 132，比 Esri 那张暗得多）。
+  // 真实影像/路网的亮度标准差都远大于阈值，不会误判。
+  function looksLikePlaceholder(url, img) {
+    const isEsri = url.indexOf('arcgisonline.com') >= 0;
+    const isGaodeSat = url.indexOf('is.autonavi.com') >= 0 && url.indexOf('style=6') >= 0;
+    if (!isEsri && !isGaodeSat) return false;
     try {
       const S = 8;
       const c = document.createElement('canvas');
@@ -72,8 +83,8 @@
       let v = 0;
       for (const l of ls) v += (l - mean) * (l - mean);
       const std = Math.sqrt(v / ls.length);
-      // 占位图特征：亮度标准差极小（近乎纯色）+ 整体是浅灰
-      return std < 8 && mean > 200 && mean < 250;
+      return isEsri ? (std < 8 && mean > 200 && mean < 250)
+                    : (std < 12 && mean > 90 && mean < 200);
     } catch (e) { return false; }
   }
 
@@ -94,8 +105,8 @@
       img.onload = () => {
         if (!done) {
           done = true; clearTimeout(timer);
-          // Esri 占位图伪装成成功：识别后当作失败，触发下一源（OSM）兜底
-          if (url.indexOf('arcgisonline.com') >= 0 && looksLikeEsriPlaceholder(img)) {
+          // 占位图伪装成成功：识别后当作失败，触发下一源兜底
+          if (looksLikePlaceholder(url, img)) {
             cache.delete(url);
             reject(new Error('placeholder'));
           } else {

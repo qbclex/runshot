@@ -45,7 +45,7 @@
 
 地点选「自定义地图（选点画轨迹）」后，面板里出现一块可交互地图（初始为全中国视野）：
 
-1. **找地方**：滚轮缩放 / 拖动平移；快选下拉含 36 个城市 + **18 个热门跑步地点**（奥森、世纪公园、西湖、东湖绿道等，直接跳到能看清跑道的缩放级别）；「找地点」框可**粘贴经纬度**一步跳转（z17），联网时也支持地名搜索（服务不可达时自动提示改用坐标/快选）；底图三选一——**卫星**（Esri World Imagery）、**电子地图**（高德路网，中文标注，Esri 街道图 / OSM 兜底）、**Google 卫星**（国内不可达时自动回退 Esri）；工具栏「⛶ 大图」可切换全屏大图选点（Esc 退出）
+1. **找地方**：滚轮缩放 / 拖动平移；快选下拉含 36 个城市 + **18 个热门跑步地点**（奥森、世纪公园、西湖、东湖绿道等，直接跳到能看清跑道的缩放级别）；「找地点」框可**粘贴经纬度**一步跳转（z17），联网时也支持地名搜索（服务不可达时自动提示改用坐标/快选）；底图四选一——**卫星（Esri World Imagery）**、**卫星（高德）**、**电子地图**（高德路网，中文标注，Esri 街道图 / OSM 兜底）、**Google 卫星**（国内不可达时自动回退 Esri）；工具栏「⛶ 大图」可切换全屏大图选点（Esc 退出）
 2. **画轨迹**（两种方式任选）：
    - **画线**：沿跑步路线按住鼠标描一圈（支持撤销 / 清空，可分多段连画）
    - **校准**：在跑道上**点 3~6 个点**（弯道前后、直道中部各点几个），自动用平滑闭环样条拟合成贴合跑道的环形轨迹——**跑道朝向、歪斜、偏移全部跟随你点的点**，不用管跑道是东西向还是南北向；锚点间实时显示虚线预览与橙色编号
@@ -106,14 +106,15 @@
 
 每张截图的顶部状态栏都由种子随机：信号格数（2–4 格实心）、4G/5G 制式、实时网速（`0.3–9.7 K/s` 或 `1.1–6.4 M/s`）、电量（19–98，低于 20 变红色且填充按百分比伸缩），与开跑时间、配速一样可复现。
 
-## 底图五种模式
+## 底图六种模式
 
 | 模式 | 数据来源 | 离线 | 可导出 |
 |---|---|---|---|
 | **离线规划图**（默认） | Canvas 程序化绘制街区、道路、公园、水系、楼栋标注（`xx号楼`）与 POI | ✅ 完全离线，同种子结果稳定 | ✅ |
 | **自动（在线优先）** | 先试真实瓦片，失败静默降级到离线底图 | 降级后可 | ✅ |
 | **真实瓦片** | OpenStreetMap，失败降级 Esri World Street Map | ❌ 需联网 | ✅ |
-| **卫星影像** | Esri World Imagery | ❌ 需联网 | ✅ |
+| **卫星影像（Esri）** | Esri World Imagery | ❌ 需联网 | ✅ |
+| **卫星影像（高德）** | 高德卫星瓦片（`webst01.is.autonavi.com`，`style=6`），境外无覆盖时回退 Esri | ❌ 需联网 | ✅ |
 | **Google 卫星影像** | `mt{0-3}.google.com`，不可达时回退 Esri | ❌ 需联网，国内一般需代理 | ⚠️ 仅 Esri 回退时可 |
 
 ### 瓦片版权与 CORS
@@ -131,10 +132,14 @@
 > `toDataURL()` 直接抛异常，而 `toBlob()` **既不回调也不报错**（规范规定走 blob 的 error 事件），
 > `await new Promise(res => cv.toBlob(res))` 会永久挂起——表现为「点了下载但什么都没发生」。
 > 因此除 Google 外一律用 `crossOrigin="anonymous"`。Google 模式因对方不发 CORS 头无解，
-> 需要出图请切到「卫星影像（Esri）」。
+> 需要出图请切到「卫星影像（高德）」或「卫星影像（Esri）」。
 
 选点器「电子地图」用**高德路网图**（`style=7`，中文标注，国内直连），Esri 街道图 / OSM 兜底；
-卫星用 Esri World Imagery。瓦片模式下每张图右下角带小尺寸版权署名，请勿移除。
+选点器与成品图的卫星底图都可选**高德卫星影像**（`style=6`，纯影像、无地名注记，国内直连）或 Esri World Imagery。
+高德卫星只对**中国境内**有覆盖，境外瓦片会返回一张纯色灰块——它 HTTP 200、`onload` 也正常触发，
+不会走 `onerror`，所以加载器会先把每张瓦片缩成 8×8 统计亮度：近乎纯色的灰（`std < 12` 且 `90 < mean < 200`）
+判定为占位图并按失败处理，让 Esri 补上真实影像。Esri 自己的浅灰「Map data not yet available」
+用同一套检测（阈值不同：`std < 8` 且 `200 < mean < 250`）。瓦片模式下每张图右下角带小尺寸版权署名，请勿移除。
 
 ## 导出
 
@@ -149,7 +154,7 @@
 
 > 折线实测长度必然大于标称里程：每个点都叠加了 σ=0.38 m 的高斯 GPS 抖动，抖动会把线段拉长（实测约 +3.7%）。真正的不变量是「圈数 × 单圈长 = 标称里程」，自检断言的是后者。
 
-另有单张出图调试地址：`index.html?shot=1&dist=5.21&pace=305&route=track`，会把一张 1080 × 2400 的成品直接铺在页面上。换地点/底图加参数：`index.html?shot=1&loc=shiji&mode=tiles`；手绘轨迹用内置演示闭环出图：`index.html?shot=1&loc=custom&mode=tiles`。参数取值——`loc`：`aosen` / `xihu` / `shiji` / `shenzhen` / `jincheng` / `xuanwu` / `custom`；`mode`：`procedural` / `auto` / `tiles` / `satellite` / `googlesat`；`route`：`block` / `park` / `track` / `outback` / `river` / `figure8`。
+另有单张出图调试地址：`index.html?shot=1&dist=5.21&pace=305&route=track`，会把一张 1080 × 2400 的成品直接铺在页面上。换地点/底图加参数：`index.html?shot=1&loc=shiji&mode=tiles`；手绘轨迹用内置演示闭环出图：`index.html?shot=1&loc=custom&mode=tiles`。参数取值——`loc`：`aosen` / `xihu` / `shiji` / `shenzhen` / `jincheng` / `xuanwu` / `custom`；`mode`：`procedural` / `auto` / `tiles` / `satellite` / `gaodesat` / `googlesat`；`route`：`block` / `park` / `track` / `outback` / `river` / `figure8`。
 
 ## 文件结构
 
@@ -164,7 +169,7 @@ runshot/
 │  ├─ routes.js          6 套轨迹模板（米坐标）+ 手绘轨迹闭环/圈数换算
 │  ├─ generator.js       记录生成与全部推导（含状态栏随机）
 │  ├─ map-procedural.js  离线规划图底图
-│  ├─ map-picker.js      自定义地图选点器（高德电子图 / Esri 卫星 / 手绘轨迹）
+│  ├─ map-picker.js      自定义地图选点器（高德电子图 / 高德与 Esri 卫星 / 手绘轨迹）
 │  ├─ map-tiles.js       真实瓦片导出（OSM / Esri / Google，含降级与 CORS 处理）
 │  ├─ render.js          360 × 800 整屏渲染
 │  ├─ zip.js             ZIP 打包（store + CRC32，支持中文名）
@@ -178,7 +183,7 @@ runshot/
 
 | 服务 | 用途 | 条款 |
 |---|---|---|
-| [高德地图](https://lbs.amap.com/) | 选点器电子（街道）底图 | 公开瓦片接口，商用需按其条款申请 key |
+| [高德地图](https://lbs.amap.com/) | 选点器电子（街道）底图、卫星影像底图 | 公开瓦片接口，商用需按其条款申请 key |
 | [Esri](https://www.esri.com/) World Street Map / Imagery | 街道兜底、卫星影像 | 公开服务，署名 Esri · Maxar · Earthstar Geographics |
 | [OpenStreetMap](https://www.openstreetmap.org/copyright) | 街道兜底、导出「真实瓦片」 | © 贡献者，ODbL 许可，须署名 OSM |
 | Google 瓦片 | 可选卫星影像 | 无 CORS 头，仅预览；受 Google 服务条款约束 |

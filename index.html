@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>跑步记录截图生成器 · RUNSHOT</title>
-<link rel="stylesheet" href="css/style.css?v=20261115-1">
+<link rel="stylesheet" href="css/style.css?v=20261115-2">
 </head>
 <body>
 
@@ -109,6 +109,7 @@
             <option value="auto">自动（在线优先，失败降级）</option>
             <option value="tiles">真实瓦片（OpenStreetMap）</option>
             <option value="satellite">卫星影像（Esri）</option>
+            <option value="gaodesat">卫星影像（高德）</option>
             <option value="googlesat">Google 卫星影像</option>
           </select>
       </label>
@@ -122,6 +123,7 @@
             <span>底图</span>
             <select id="pickBase">
               <option value="satellite">卫星（Esri）</option>
+              <option value="gaode">卫星（高德）</option>
               <option value="street">电子地图</option>
               <option value="google">Google 卫星</option>
             </select>
@@ -241,15 +243,15 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="js/rng.js?v=20261115-1"></script>
-<script src="js/zip.js?v=20261115-1"></script>
-<script src="js/routes.js?v=20261115-1"></script>
-<script src="js/generator.js?v=20261115-1"></script>
-<script src="js/map-procedural.js?v=20261115-1"></script>
-<script src="js/map-picker.js?v=20261115-1"></script>
-<script src="js/map-tiles.js?v=20261115-1"></script>
-<script src="js/render.js?v=20261115-1"></script>
-<script src="js/main.js?v=20261115-1"></script>
-<div id="verTag" title="当前版本（用于排查缓存）">v1</div>
+<script src="js/rng.js?v=20261115-2"></script>
+<script src="js/zip.js?v=20261115-2"></script>
+<script src="js/routes.js?v=20261115-2"></script>
+<script src="js/generator.js?v=20261115-2"></script>
+<script src="js/map-procedural.js?v=20261115-2"></script>
+<script src="js/map-picker.js?v=20261115-2"></script>
+<script src="js/map-tiles.js?v=20261115-2"></script>
+<script src="js/render.js?v=20261115-2"></script>
+<script src="js/main.js?v=20261115-2"></script>
+<div id="verTag" title="当前版本（用于排查缓存）">v2</div>
 </body>
 </html>
