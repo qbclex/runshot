@@ -1,0 +1,24 @@
+# 调试/临时测试页（本项目用 _ 前缀命名）
+_*.html
+_*.png
+_*.js
+
+# 生成的成品图与压缩包
+keep-run-*.png
+keep-run_*.zip
+*.log
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 浏览器测试残留
+edge_profile*/
+.playwright-mcp/
+
+# 依赖（本项目零依赖，此处仅作预防）
+node_modules/

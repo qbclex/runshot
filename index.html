@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>跑步记录截图生成器 · RUNSHOT</title>
+<link rel="stylesheet" href="css/style.css?v=20261115-1">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo"></span>
+    <b>RUNSHOT</b>
+    <em>跑步记录截图批量生成器</em>
+  </div>
+  <div class="topbar-right">
+    <span class="badge" id="modeBadge">离线底图</span>
+    <a class="ghost-link" href="?selftest=1" target="_blank">自检</a>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="panel">
+    <div class="panel-body">
+
+    <section class="group">
+      <h3>里程与配速</h3>
+      <label class="field">
+        <span>距离范围（公里）</span>
+        <div class="pair">
+          <input id="dMin" type="number" value="3.0" step="0.1" min="0.5" max="42">
+          <em>–</em>
+          <input id="dMax" type="number" value="6.5" step="0.1" min="0.5" max="42">
+        </div>
+      </label>
+      <label class="field">
+        <span>配速范围（每公里）</span>
+        <div class="pair">
+          <input id="pMin" type="text" value="5'20&quot;">
+          <em>–</em>
+          <input id="pMax" type="text" value="6'20&quot;">
+        </div>
+      </label>
+      <p class="hint">支持 <code>5'30"</code> 或 <code>5.5</code> 两种写法。配速越快，步频、心率、功率会自动同步抬高。</p>
+    </section>
+
+    <section class="group">
+      <h3>时间安排</h3>
+      <div class="pair">
+        <label class="field">
+          <span>起始日期</span>
+          <input id="startDate" type="date">
+        </label>
+        <label class="field narrow">
+          <span>周数</span>
+          <input id="weeks" type="number" value="4" min="1" max="26">
+        </label>
+      </div>
+      <div class="pair">
+        <label class="field narrow">
+          <span>每周张数</span>
+          <input id="perWeek" type="number" value="3" min="1" max="7">
+        </label>
+        <label class="field">
+          <span>开跑时段</span>
+          <div class="pair tight">
+            <input id="tStart" type="time" value="06:00">
+            <em>–</em>
+            <input id="tEnd" type="time" value="08:00">
+          </div>
+        </label>
+      </div>
+      <div class="field">
+        <span>星期偏好</span>
+        <div class="chips" id="weekdayChips">
+          <button class="chip" data-wd="1">周一</button>
+          <button class="chip" data-wd="2">周二</button>
+          <button class="chip" data-wd="3">周三</button>
+          <button class="chip" data-wd="4">周四</button>
+          <button class="chip" data-wd="5">周五</button>
+          <button class="chip" data-wd="6">周六</button>
+          <button class="chip" data-wd="0">周日</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="group">
+      <h3>轨迹与地图</h3>
+      <div class="field">
+        <span>GPS 轨迹（可多选，随机分配）</span>
+        <div class="chips" id="routeChips">
+          <button class="chip" data-kind="block">街区环线</button>
+          <button class="chip" data-kind="park">公园环湖</button>
+          <button class="chip" data-kind="track">操场跑道</button>
+          <button class="chip" data-kind="outback">折返步道</button>
+          <button class="chip" data-kind="river">沿河绿道</button>
+          <button class="chip" data-kind="figure8">8 字路线</button>
+        </div>
+      </div>
+      <label class="field">
+        <span>地点</span>
+        <select id="location"></select>
+      </label>
+      <label class="field">
+        <span>地图底图</span>
+          <select id="mapMode">
+            <option value="procedural">离线规划图（断网可用）</option>
+            <option value="auto">自动（在线优先，失败降级）</option>
+            <option value="tiles">真实瓦片（OpenStreetMap）</option>
+            <option value="satellite">卫星影像（Esri）</option>
+            <option value="googlesat">Google 卫星影像</option>
+          </select>
+      </label>
+      <div id="customPanel" hidden>
+        <div class="pair">
+          <label class="field">
+            <span>城市 / 地点快选（定位起点）</span>
+            <select id="pickCity"></select>
+          </label>
+          <label class="field narrow">
+            <span>底图</span>
+            <select id="pickBase">
+              <option value="satellite">卫星（Esri）</option>
+              <option value="street">电子地图</option>
+              <option value="google">Google 卫星</option>
+            </select>
+          </label>
+        </div>
+        <label class="field">
+          <span>找地点：粘贴经纬度一步跳转，或输入地名搜索</span>
+          <div class="pair tight">
+            <input id="placeInput" type="text" placeholder="如 40.0175, 116.3878">
+            <button type="button" class="ghost" id="placeGo">跳转</button>
+          </div>
+        </label>
+        <div id="placeResults" hidden></div>
+        <div id="pickBlock">
+          <div class="pickwrap"><canvas id="pickCanvas"></canvas></div>
+          <div class="pickbar">
+            <button type="button" class="chip on" id="pickMove">拖动</button>
+            <button type="button" class="chip" id="pickDraw">画线</button>
+            <button type="button" class="chip" id="pickCal" title="在跑道上点几个点，自动拟合轨迹">校准</button>
+            <span class="pickops">
+              <button type="button" class="ghost" id="pickZin" title="放大">＋</button>
+              <button type="button" class="ghost" id="pickZout" title="缩小">－</button>
+              <button type="button" class="ghost" id="pickUndo">撤销</button>
+              <button type="button" class="ghost" id="pickClear">清空</button>
+              <button type="button" class="ghost" id="pickBig" title="全屏大图选点，按 Esc 退出">⛶ 大图</button>
+            </span>
+          </div>
+        </div>
+        <p class="hint" id="pickInfo">先缩放到你的跑步地点，再切「画线」沿路线描一圈，或切「校准」在跑道上点 3~6 个点自动拟合</p>
+      </div>
+    </section>
+
+    <section class="group">
+      <h3>真实感参数</h3>
+      <div class="pair">
+        <label class="field narrow">
+          <span>体重（kg）</span>
+          <input id="weight" type="number" value="60" min="40" max="110">
+        </label>
+        <label class="field">
+          <span>心率区间</span>
+          <div class="pair tight">
+            <input id="hrMin" type="number" value="135" min="90" max="200">
+            <em>–</em>
+            <input id="hrMax" type="number" value="172" min="90" max="200">
+          </div>
+        </label>
+      </div>
+      <label class="field">
+        <span>爬升高度（米）</span>
+        <input id="elevInput" type="text" placeholder="留空自动 · 固定填 12 · 区间填 4-18">
+      </label>
+      <p class="hint">留空按路线类型自动估算（田径场为 0–3 m 的 GPS 抖动）；填 <code>12</code> 则每张都是 12 米；填 <code>4-18</code> 则每条记录在区间内随机。</p>
+      <label class="field">
+        <span>路线标签文字（留空则用路线名）</span>
+        <input id="tagText" type="text" placeholder="如：奥体中心田径场">
+      </label>
+      <label class="field">
+        <span>随机种子（同种子结果可复现）</span>
+        <div class="pair">
+          <input id="seed" type="text">
+          <button class="ghost" id="btnReroll" title="换一个种子">⟳</button>
+        </div>
+      </label>
+    </section>
+
+    </div>
+
+    <div class="panel-foot">
+      <button class="btn primary block" id="btnGenerate">生成截图</button>
+      <p class="tiny">首次生成约 1–3 秒（真实瓦片模式取决于网络）。</p>
+    </div>
+  </aside>
+
+  <main class="stage">
+    <div class="stage-head">
+      <div class="summary" id="summary">尚未生成</div>
+      <div class="stage-actions">
+        <button class="btn" id="btnZip" disabled>打包下载 ZIP</button>
+      </div>
+    </div>
+
+    <div class="grid" id="grid">
+      <div class="empty">
+        <b>左侧设置参数，点「生成截图」</b>
+        <span>默认 4 周 × 每周 3 张 = 12 张；每张 1080×2400，可直接打包成 ZIP。</span>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-body">
+    <div class="modal-shot"><canvas id="modalCanvas"></canvas></div>
+    <div class="modal-side">
+      <div class="modal-title" id="modalTitle">—</div>
+      <dl class="facts" id="modalFacts"></dl>
+      <div class="modal-actions">
+        <button class="btn primary block" id="btnDownloadOne">下载这张 PNG</button>
+        <button class="btn block" id="btnPrev">上一张</button>
+        <button class="btn block" id="btnNext">下一张</button>
+        <button class="btn ghost block" data-close>关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="progress-card">
+    <div class="progress-title" id="progressTitle">正在渲染…</div>
+    <div class="progress-bar"><i id="progressBar"></i></div>
+    <div class="progress-sub" id="progressSub"></div>
+    <button class="btn ghost" id="btnCancel">中止</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/rng.js?v=20261115-1"></script>
+<script src="js/zip.js?v=20261115-1"></script>
+<script src="js/routes.js?v=20261115-1"></script>
+<script src="js/generator.js?v=20261115-1"></script>
+<script src="js/map-procedural.js?v=20261115-1"></script>
+<script src="js/map-picker.js?v=20261115-1"></script>
+<script src="js/map-tiles.js?v=20261115-1"></script>
+<script src="js/render.js?v=20261115-1"></script>
+<script src="js/main.js?v=20261115-1"></script>
+<div id="verTag" title="当前版本（用于排查缓存）">v1</div>
+</body>
+</html>
