@@ -23,9 +23,26 @@ if not defined PY (
 
 echo 正在启动本地服务器 http://localhost:8777 ...
 start "" /b %PY% -m http.server 8777
-ping -n 2 127.0.0.1 >nul
 
+set /a TRY=0
+:wait
+set /a TRY+=1
+powershell -NoProfile -Command "try { $c = New-Object Net.Sockets.TcpClient('127.0.0.1', 8777); $c.Close(); exit 0 } catch { exit 1 }" >nul 2>nul
+if not errorlevel 1 goto open
+if %TRY% geq 15 goto failed
+ping -n 2 127.0.0.1 >nul
+goto wait
+
+:open
 start "" "http://localhost:8777/index.html"
 echo.
-echo 服务器已启动：关闭此窗口即停止服务器。
+echo 服务器已启动，页面已自动打开：http://localhost:8777/index.html
+echo 关闭此窗口即停止服务器。
 pause >nul
+exit /b 0
+
+:failed
+echo.
+echo 服务器没有启动成功，请把上面的错误信息发给我。
+pause
+exit /b 1
