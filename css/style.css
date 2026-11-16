@@ -449,3 +449,58 @@ input[type="file"]::file-selector-button:hover { border-color: var(--green); col
   font-size: 10px; color: var(--ink-2); opacity: 0.55;
   pointer-events: none; user-select: none;
 }
+
+/* ---------- Star 弹窗 ---------- */
+.star-link { color: var(--green); }
+.star-modal { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; }
+.star-modal[hidden] { display: none; }
+.star-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, .62); backdrop-filter: blur(3px); animation: starFade .22s ease-out; }
+.star-card {
+  position: relative;
+  width: 384px;
+  max-width: calc(100vw - 32px);
+  padding: 30px 28px 16px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .62);
+  animation: starPop .3s cubic-bezier(.2, .9, .3, 1.15);
+}
+.star-badge {
+  width: 58px; height: 58px; margin: 0 auto 16px;
+  display: grid; place-items: center;
+  font-size: 30px; line-height: 1; color: var(--green);
+  background: var(--green-dim);
+  border: 1px solid rgba(43, 212, 126, .38);
+  border-radius: 17px;
+}
+.star-card h2 { margin: 0 0 10px; font-size: 18px; }
+.star-card p { margin: 0 0 22px; font-size: 12.5px; line-height: 1.8; color: var(--ink-2); }
+.star-card p b { color: var(--green); font-weight: 600; }
+.star-go { display: flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; }
+.star-go:focus-visible { outline: 2px solid rgba(43, 212, 126, .55); outline-offset: 2px; }
+.star-card button:focus-visible { outline: 2px solid rgba(43, 212, 126, .55); outline-offset: 1px; }
+.star-x:focus-visible { outline-offset: 0; }
+.star-foot { display: flex; justify-content: space-between; margin-top: 10px; }
+.star-foot button {
+  padding: 7px 4px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.star-foot button:hover { color: var(--ink-2); }
+.star-x {
+  position: absolute; top: 10px; right: 10px;
+  width: 28px; height: 28px;
+  font-size: 19px; line-height: 1;
+  color: var(--ink-3);
+  background: none; border: 0; border-radius: 8px;
+  cursor: pointer;
+}
+.star-x:hover { color: var(--ink); background: var(--panel-2); }
+@keyframes starPop { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes starFade { from { opacity: 0; } to { opacity: 1; } }
