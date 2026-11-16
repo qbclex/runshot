@@ -61,12 +61,15 @@
   // 于是既不会触发 onerror、也不会触发兜底源。这里按源各自的特征识别，识别到就当作
   // 失败处理，让下一源有机会补上真实瓦片：
   //   Esri 超出覆盖层级 → 浅灰「Map data not yet available」（近乎纯色的浅灰）；
-  //   高德卫星境外区域   → 固定的中灰图（亮度约 132，比 Esri 那张暗得多）。
+  //   高德卫星境外/超层级 → 固定的中灰图（亮度约 132，比 Esri 那张暗得多）；
+  //   高德路网境外         → 整张纯白（亮度约 249，标准差 ~0）。
   // 真实影像/路网的亮度标准差都远大于阈值，不会误判。
   function looksLikePlaceholder(url, img) {
     const isEsri = url.indexOf('arcgisonline.com') >= 0;
-    const isGaodeSat = url.indexOf('is.autonavi.com') >= 0 && url.indexOf('style=6') >= 0;
-    if (!isEsri && !isGaodeSat) return false;
+    const isGaode = url.indexOf('is.autonavi.com') >= 0;
+    const isGaodeSat = isGaode && url.indexOf('style=6') >= 0;
+    const isGaodeRoad = isGaode && url.indexOf('style=7') >= 0;
+    if (!isEsri && !isGaodeSat && !isGaodeRoad) return false;
     try {
       const S = 8;
       const c = document.createElement('canvas');
@@ -83,8 +86,9 @@
       let v = 0;
       for (const l of ls) v += (l - mean) * (l - mean);
       const std = Math.sqrt(v / ls.length);
-      return isEsri ? (std < 8 && mean > 200 && mean < 250)
-                    : (std < 12 && mean > 90 && mean < 200);
+      if (isEsri) return std < 8 && mean > 200 && mean < 250;
+      if (isGaodeSat) return std < 12 && mean > 90 && mean < 200;
+      return std < 6 && mean > 238;
     } catch (e) { return false; }
   }
 

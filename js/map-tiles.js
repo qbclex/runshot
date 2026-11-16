@@ -11,9 +11,13 @@
     { id: 'xuanwu', name: '玄武湖 · 南京', lat: 32.0740, lon: 118.7960 }
   ];
 
+  // 电子地图（街道）：高德路网优先——和选点器用的是同一套图，国内每级都有数据、中文标注最全；
+  // Esri 街道 / OSM 兜底。实测郑州一带 Esri World Street Map 在 z15~z19 全部返回同一张
+  // 「Map data not yet available」灰图，只靠它成品图会退化成网格；OSM 国内又常连不上。
   const PROVIDERS = [
-    { id: 'osm', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attr: '© OpenStreetMap' },
-    { id: 'esri-street', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', attr: '© Esri' }
+    { id: 'gaode-road', url: 'https://wprd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}', attr: '© 高德地图' },
+    { id: 'esri-street', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', attr: '© Esri' },
+    { id: 'osm', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attr: '© OpenStreetMap' }
   ];
 
   // 卫星影像（Esri World Imagery，免密钥公开服务）
@@ -21,12 +25,13 @@
     { id: 'esri', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr: '© Esri · Maxar · Earthstar Geographics' }
   ];
 
-  // 高德卫星影像（style=6，同为 Web Mercator 256px 切片）：境内直连快、层级深，纯影像无注记。
+  // 高德卫星影像（style=6，同为 Web Mercator 256px 切片）：境内直连快，纯影像无注记。
   // 返回 ACAO:*（已实测），画布不被污染，能正常导出成品图。
-  // 境外无覆盖：返回一张固定的中灰「无影像」图（HTTP 仍 200），由 looksLikePlaceholder
-  // 识别后整图判定为失败，自动落到末尾的 Esri 影像。
+  // maxZ=18：境内多数区域到 z18 为止，再往上会返回固定的中灰「无影像」图（实测郑州 z19
+  // 整张 mean≈131/std≈0.6），所以层级封顶后放大使用，而不是让它触发兜底。
+  // 境外无覆盖时同样返回中灰图，由 looksLikePlaceholder 识别后落到末尾的 Esri 影像。
   const GAODE_SAT = [
-    { id: 'gaode', url: 'https://webst01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=6&x={x}&y={y}&z={z}', attr: '© 高德地图' },
+    { id: 'gaode', url: 'https://webst01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=6&x={x}&y={y}&z={z}', attr: '© 高德地图', maxZ: 18 },
     { id: 'esri', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr: '© Esri · Maxar · Earthstar Geographics' }
   ];
 
@@ -48,15 +53,18 @@
   }
 
   // 「没有数据」时有些源不报错，而是回一张合法的占位图（HTTP 200、能 onload），
-  // 于是既不会触发 onerror、也不会触发兜底源，成品图里就是一片灰格。识别特征：
-  //   Esri 超出覆盖层级 → 浅灰「Map data not yet available」（近乎纯色的浅灰）；
-  //   高德卫星境外区域   → 固定的中灰图（亮度约 132，比 Esri 那张暗得多）。
-  // 真实影像/路网的亮度标准差远大于阈值，不会误判。Google 不设 crossOrigin，
+  // 于是既不会触发 onerror、也不会触发兜底源，成品图里就是一片灰/白块。识别特征：
+  //   Esri 超出覆盖层级 → 浅灰「Map data not yet available」（郑州 z15~z19 都是同一张）；
+  //   高德卫星境外/超层级 → 固定的中灰图（亮度约 132，比 Esri 那张暗得多）；
+  //   高德路网境外         → 整张纯白（亮度约 249，标准差 ~0）。
+  // 真实影像/路网的亮度标准差都远大于阈值，不会误判。Google 不设 crossOrigin，
   // 读像素会抛 SecurityError，这里 catch 后按「不是占位图」放行即可。
   function looksLikePlaceholder(url, img) {
     const isEsri = url.indexOf('arcgisonline.com') >= 0;
-    const isGaodeSat = url.indexOf('is.autonavi.com') >= 0 && url.indexOf('style=6') >= 0;
-    if (!isEsri && !isGaodeSat) return false;
+    const isGaode = url.indexOf('is.autonavi.com') >= 0;
+    const isGaodeSat = isGaode && url.indexOf('style=6') >= 0;
+    const isGaodeRoad = isGaode && url.indexOf('style=7') >= 0;
+    if (!isEsri && !isGaodeSat && !isGaodeRoad) return false;
     try {
       const S = 8;
       const c = document.createElement('canvas');
@@ -73,8 +81,9 @@
       let v = 0;
       for (const l of ls) v += (l - mean) * (l - mean);
       const std = Math.sqrt(v / ls.length);
-      return isEsri ? (std < 8 && mean > 200 && mean < 250)
-                    : (std < 12 && mean > 90 && mean < 200);
+      if (isEsri) return std < 8 && mean > 200 && mean < 250;
+      if (isGaodeSat) return std < 12 && mean > 90 && mean < 200;
+      return std < 6 && mean > 238;
     } catch (e) { return false; }
   }
 
@@ -114,7 +123,8 @@
     const targetMpp = 1 / (view.scale * S); // 设备像素 / 米
 
     let z = 3;
-    while (z < 19 && mppAt(z, preset.lat) > targetMpp) z++;
+    const zMax = provider.maxZ || 19;
+    while (z < zMax && mppAt(z, preset.lat) > targetMpp) z++;
     const mppz = mppAt(z, preset.lat);
 
     const M = Math.PI / 180;

@@ -423,6 +423,8 @@
   }
 
   function drawTag(ctx, record) {
+    // 「自定义地图」只是 routeName 的占位文案，不是用户填的标签，画在成品上像残留的界面角标
+    if (!record.tag || record.tag === '自定义地图') return;
     const y = 181;
     ctx.fillStyle = '#ff9f34';
     rr(ctx, 16, y, 15, 15, 4.2);
