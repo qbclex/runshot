@@ -32,7 +32,14 @@
 
 ## 快速开始
 
-方式一（最简单）：双击 `index.html`（离线底图模式）。
+**在线版（手机 / 电脑都不用装东西）**：直接打开 <https://runshot-f4qks7a912u.qoder.zone/>
+
+- 手机把页面「添加到主屏幕」后可以像 App 一样全屏打开，**断网也能用**（默认离线底图；真实瓦片需要联网）
+- iPhone：Safari 打开 → 分享 → 添加到主屏幕
+- Android：Chrome / Edge 打开 → 菜单 → 添加到主屏幕（或「安装应用」）
+- 保存图片：手机端点「保存 / 分享这张图」会调起系统分享面板，可直接存进相册
+
+方式一（最简单，本地）：双击 `index.html`（离线底图模式）。
 
 方式二（真实瓦片模式推荐）：启动本地服务器，页面会自动打开，关闭窗口即停止服务器。需要本机装有 Python 3（`python` / `py` / `python3` 任一）。
 
@@ -194,6 +201,9 @@ runshot/
 ├─ start.bat             Windows 本地服务器（可选）
 ├─ start.command         macOS 本地服务器启动器
 ├─ start.sh              Linux 本地服务器启动器
+├─ manifest.webmanifest  PWA 清单（添加到主屏幕）
+├─ sw.js                 离线缓存（应用外壳）
+├─ icons/                应用图标（192 / 512 / apple-touch）
 ├─ css/style.css
 ├─ js/
 │  ├─ rng.js             种子随机 + 时间/配速格式化

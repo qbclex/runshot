@@ -3,8 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0c0e11">
+<meta name="description" content="按 Keep 户外跑步详情页的版面，批量生成跑步记录截图；纯前端、离线可用。">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="RUNSHOT">
 <title>跑步记录截图生成器 · RUNSHOT</title>
-<link rel="stylesheet" href="css/style.css?v=20261116-19">
+<link rel="stylesheet" href="css/style.css?v=20261116-20">
 </head>
 <body>
 
@@ -269,6 +276,11 @@
 <script src="js/render.js?v=20261116-16"></script>
 <script src="js/main.js?v=20261116-19"></script>
 <script src="js/star.js?v=20261116-17"></script>
-<div id="verTag" title="当前版本（用于排查缓存）">v24</div>
+<div id="verTag" title="当前版本（用于排查缓存）">v25</div>
+<script>
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
 </body>
 </html>

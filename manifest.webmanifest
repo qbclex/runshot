@@ -1,0 +1,19 @@
+{
+  "name": "RUNSHOT · 跑步记录截图批量生成器",
+  "short_name": "RUNSHOT",
+  "description": "按 Keep 户外跑步详情页的版面，批量生成跑步记录截图；纯前端、离线可用。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0c0e11",
+  "theme_color": "#0c0e11",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

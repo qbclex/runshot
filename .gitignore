@@ -22,3 +22,8 @@ edge_profile*/
 
 # 依赖（本项目零依赖，此处仅作预防）
 node_modules/
+
+# 发布产物与站点描述
+dist/
+*.qoder.site
+.qoder/
