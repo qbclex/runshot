@@ -358,6 +358,9 @@
     });
     $('#btnZip').addEventListener('click', downloadZip);
     $('#btnDownloadOne').addEventListener('click', () => downloadOne(state.current));
+    if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+      $('#btnDownloadOne').textContent = '保存 / 分享这张图';
+    }
     $('#btnPrev').addEventListener('click', () => stepModal(-1));
     $('#btnNext').addEventListener('click', () => stepModal(1));
     $('#btnCancel').addEventListener('click', () => { state.cancel = true; });
@@ -651,6 +654,24 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }
 
+  // 手机端优先走系统分享面板（iOS 可「存储图像」到相册），不支持时退回下载
+  async function saveImage(blob, name) {
+    const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    if (coarse && window.File && navigator.canShare) {
+      const file = new File([blob], name, { type: 'image/png' });
+      if (navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: name });
+          return 'shared';
+        } catch (e) {
+          if (e && e.name === 'AbortError') return 'canceled';
+        }
+      }
+    }
+    triggerDownload(blob, name);
+    return 'downloaded';
+  }
+
   async function downloadOne(i, btn) {
     const rec = state.records[i];
     if (!rec) return;
@@ -659,8 +680,11 @@
       const cv = await renderSafe(rec, 3);
       const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
       if (!blob) throw new Error('导出失败');
-      triggerDownload(blob, window.Generator.fileName(rec, i));
-      toast('已下载 ' + window.Generator.fileName(rec, i));
+      const name = window.Generator.fileName(rec, i);
+      const how = await saveImage(blob, name);
+      if (how === 'shared') toast('已打开系统分享，可保存到相册');
+      else if (how === 'canceled') toast('已取消');
+      else toast('已下载 ' + name);
     } catch (e) {
       toast('导出失败：' + e.message);
     }

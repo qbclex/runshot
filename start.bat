@@ -35,8 +35,11 @@ goto wait
 
 :open
 start "" "http://localhost:8777/index.html"
+set "LAN="
+for /f "delims=" %%i in ('powershell -NoProfile -Command "(Get-NetIPConfiguration | Where-Object { $_.IPv4DefaultGateway -ne $null } | Select-Object -First 1).IPv4Address.IPAddress" 2^>nul') do set "LAN=%%i"
 echo.
 echo 服务器已启动，页面已自动打开：http://localhost:8777/index.html
+if defined LAN echo 手机连同一个 Wi-Fi，打开：http://%LAN%:8777/index.html
 echo 关闭此窗口即停止服务器。
 pause >nul
 exit /b 0
