@@ -33,7 +33,7 @@
 
 方式一（最简单）：双击 `index.html`。
 
-方式二（真实瓦片模式推荐）：双击 `start.bat`，浏览器打开 `http://localhost:8777/index.html`。
+方式二（真实瓦片模式推荐）：双击 `start.bat`。脚本会先启动本地服务器（`http://localhost:8777`），再自动打开页面；关闭窗口即停止服务器。需要本机装有 Python（`python` / `py` / `python3` 任一）。
 
 > 更新代码后如果看不到新效果，按 **Ctrl + F5** 强制刷新（浏览器会缓存 JS）；`index.html` 里的资源已带版本号，正常刷新即可拿到最新代码。
 
