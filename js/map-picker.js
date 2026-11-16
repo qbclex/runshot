@@ -569,6 +569,8 @@
     calCount: () => st.calPts.length,
     base: () => st.base,
     mode: () => st.mode,
+    // 当前视野中心：地名搜索拿它当空间偏向，让「公园」「体育馆」这类短词先出附近的
+    center: () => ({ lat: st.lat, lon: st.lon, z: st.z }),
     ready: () => !!ctx,
     size: () => ({ w: W, h: H, bw: cv.width, bh: cv.height, cw: cv.getBoundingClientRect().width, ch: cv.getBoundingClientRect().height })
   };

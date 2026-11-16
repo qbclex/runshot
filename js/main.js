@@ -91,7 +91,34 @@
     ['松花江畔 · 哈尔滨', 45.7800, 126.6180, 15]
   ];
 
-  /* 找地点：坐标直接跳转；地名尝试 Esri 地理编码（联网时），失败给出明确提示 */
+  /* 地理编码服务链：按顺序试，第一个给出结果的就用它。
+     Photon 排第一是因为国内网络直连 geocode.arcgis.com 实测 15s 无响应（根本连不上，
+     这正是「搜索总是超时」的原因），而 Photon 用 OSM 数据、返回 ACAO:*、实测 1~2s 出结果；
+     Esri 留在后面给海外网络兜底。 */
+  const GEO_SOURCES = [
+    {
+      id: 'Photon', ms: 6000,
+      url: (q, c) => 'https://photon.komoot.io/api/?limit=8&q=' + encodeURIComponent(q)
+        + (c ? '&lat=' + c.lat.toFixed(4) + '&lon=' + c.lon.toFixed(4) : ''),
+      parse: d => (d.features || []).map(f => {
+        const p = f.properties || {}, co = f.geometry && f.geometry.coordinates;
+        if (!co || !p.name) return null;
+        const where = [p.city, p.state, p.country].filter(Boolean).join(' · ');
+        return { label: p.name + (where ? '（' + where + '）' : ''), lat: co[1], lon: co[0] };
+      }).filter(Boolean).slice(0, 8)
+    },
+    {
+      id: 'Esri', ms: 6000,
+      url: q => 'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates'
+        + '?f=json&maxLocations=8&outFields=City,Region,Country&singleLine=' + encodeURIComponent(q),
+      parse: d => (d.candidates || []).map(c => ({
+        label: c.address + (c.attributes && c.attributes.Region ? '（' + c.attributes.Region + '）' : ''),
+        lat: c.location.y, lon: c.location.x
+      })).slice(0, 8)
+    }
+  ];
+
+  /* 找地点：坐标直接跳转；地名走上面的服务链（联网时），失败给出明确提示 */
   async function findPlace() {
     const input = $('#placeInput');
     const box = $('#placeResults');
@@ -114,35 +141,41 @@
     }
     if (!raw) { box.textContent = '输入经纬度（如 40.0175, 116.3878）或要搜索的地名'; return; }
 
-    box.textContent = '搜索中…';
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 12000);
-    try {
-      const url = 'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates'
-        + '?f=json&maxLocations=8&outFields=City,Region,Country&singleLine='
-        + encodeURIComponent(raw);
-      const r = await fetch(url, { signal: ctrl.signal });
-      if (!r.ok) throw new Error('http ' + r.status);
-      const d = await r.json();
-      const cands = (d.candidates || []).slice(0, 8);
-      if (!cands.length) { box.textContent = '没搜到「' + raw + '」，换个写法或直接粘贴经纬度'; return; }
-      box.textContent = '';
-      cands.forEach(c => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'place-item';
-        b.textContent = c.address + (c.attributes && c.attributes.Region ? '（' + c.attributes.Region + '）' : '');
-        b.addEventListener('click', () => {
-          window.MapPicker.setCenter(c.location.y, c.location.x, 16);
-          box.hidden = true;
-        });
-        box.appendChild(b);
-      });
-    } catch (e) {
-      box.textContent = '地名搜索失败或超时，可直接粘贴经纬度跳转，或用上方快选';
-    } finally {
-      clearTimeout(timer);
+    const bias = window.MapPicker.center();
+    let netFail = 0;
+    for (let i = 0; i < GEO_SOURCES.length; i++) {
+      const src = GEO_SOURCES[i];
+      box.textContent = i ? '搜索中…（换备用服务）' : '搜索中…';
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), src.ms);
+      try {
+        const r = await fetch(src.url(raw, bias), { signal: ctrl.signal });
+        if (!r.ok) throw new Error('http ' + r.status);
+        const hits = src.parse(await r.json());
+        if (hits.length) {
+          box.textContent = '';
+          hits.forEach(h => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'place-item';
+            b.textContent = h.label;
+            b.addEventListener('click', () => {
+              window.MapPicker.setCenter(h.lat, h.lon, 16);
+              box.hidden = true;
+            });
+            box.appendChild(b);
+          });
+          return;
+        }
+      } catch (e) {
+        netFail++;
+      } finally {
+        clearTimeout(timer);
+      }
     }
+    box.textContent = netFail === GEO_SOURCES.length
+      ? '地名搜索超时（' + GEO_SOURCES.map(s => s.id).join(' / ') + ' 都连不上），可直接粘贴经纬度跳转，或用上方快选'
+      : '没搜到「' + raw + '」，换个写法或直接粘贴经纬度';
   }
 
   let pickerTimer = null;
