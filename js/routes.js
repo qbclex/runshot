@@ -14,11 +14,101 @@
     return L;
   }
 
+  function bboxOf(pts) {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of pts) {
+      if (p[0] < minX) minX = p[0];
+      if (p[0] > maxX) maxX = p[0];
+      if (p[1] < minY) minY = p[1];
+      if (p[1] > maxY) maxY = p[1];
+    }
+    return { minX, maxX, minY, maxY };
+  }
+
+  /* ---------- 闭环逐圈生成 ---------- */
+
+  function arcTable(pts) {
+    const N = pts.length;
+    const cum = new Float64Array(N + 1);
+    for (let i = 1; i <= N; i++) cum[i] = cum[i - 1] + dist(pts[i - 1], pts[i % N]);
+    return { cum, total: cum[N] };
+  }
+
+  // 沿环线弧长 s 处的位置
+  function sampleArc(pts, tab, s) {
+    const total = tab.total;
+    s = s % total;
+    if (s < 0) s += total;
+    let lo = 0, hi = pts.length;
+    while (lo + 1 < hi) {
+      const mid = (lo + hi) >> 1;
+      if (tab.cum[mid] <= s) lo = mid; else hi = mid;
+    }
+    const a = pts[lo], b = pts[(lo + 1) % pts.length];
+    const seg = tab.cum[lo + 1] - tab.cum[lo];
+    const t = seg > 1e-9 ? (s - tab.cum[lo]) / seg : 0;
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  }
+
+  /* 按里程沿基准环线绕圈，每圈换一条「跑道」（向外横向平移），
+     换道在起跑线之后 blend 米内平滑过渡；末尾不足一圈按里程截断。
+     这样轨迹就是一圈一圈分开的，且起终点由里程与单圈长共同决定。
+     道次按「由内到外再折回」的三角波排列，相邻两圈只差一条道，换道不突兀。 */
+  function lapRun(basePts, targetLen, lanes, rng, opt) {
+    opt = opt || {};
+    const step = opt.step || 2;
+    const jit = opt.jitter == null ? 0.1 : opt.jitter;
+    const tab = arcTable(basePts);
+    const lapLen = tab.total;
+    const blend = Math.min(opt.blend || 12, lapLen * 0.06);
+
+    const nL = lanes.length;
+    const period = 2 * (nL - 1);
+    const laneIdx = (i) => {
+      if (nL < 2) return 0;
+      const k = ((i % period) + period) % period;
+      return k < nL ? k : period - k;
+    };
+
+    let cx = 0, cy = 0;
+    for (const p of basePts) { cx += p[0]; cy += p[1]; }
+    cx /= basePts.length; cy /= basePts.length;
+
+    const n = Math.max(24, Math.round(targetLen / step));
+    const dS = Math.min(3, lapLen * 0.01);
+    const pts = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const s = targetLen * i / (n - 1);
+      const q = sampleArc(basePts, tab, s);
+      const lapI = Math.floor(s / lapLen);
+      const lane = lanes[laneIdx(lapI)];
+      const prev = lanes[laneIdx(lapI - 1)];
+      const t = Math.min(1, (s - lapI * lapLen) / blend);
+      const w = t * t * (3 - 2 * t);
+      const off = lapI === 0 ? lane : prev + (lane - prev) * w;
+
+      // 切向取前后 dS 米的割线：手绘折线的锯齿不至于让法线逐点乱跳，
+      // 否则横向偏移一放大，轨迹就会被拉长
+      const qa = sampleArc(basePts, tab, s - dS);
+      const qb = sampleArc(basePts, tab, s + dS);
+      let tx = qb[0] - qa[0], ty = qb[1] - qa[1];
+      const tl = Math.hypot(tx, ty) || 1;
+      tx /= tl; ty /= tl;
+      let nx = -ty, ny = tx;
+      if ((q[0] - cx) * nx + (q[1] - cy) * ny < 0) { nx = -nx; ny = -ny; }
+
+      const o = off + rng.gauss(0, jit);
+      pts[i] = [q[0] + nx * o, q[1] + ny * o];
+    }
+    return { pts, lapLen, laps: targetLen / lapLen };
+  }
+
   /* ---------- 基础形状 ---------- */
 
-  // 标准 400m 跑道：直道 84.39m + 半径 36.5m
+  // 标准 400m 跑道：直道 84.39m + 半径 36.8m（测量线距内沿 0.3m）
+  // 2×84.39 + 2π×36.8 = 400.0 m，单圈正好 400 m，圈数可直接用里程 ÷ 400 换算
   function stadium(L, R0, step) {
-    L = L || 84.39; R0 = R0 || 36.5; step = step || 2;
+    L = L || 84.39; R0 = R0 || 36.8; step = step || 2;
     const pts = [];
     const half = L / 2;
     for (let x = -half; x <= half; x += step) pts.push([x, -R0]);
@@ -124,10 +214,30 @@
     }
   }
 
+  // 标准跑道上常用的四条道次（距测量线向外的横向偏移，米）：半径 36.9 / 39.2 / 41.5 / 43.8 m
+  const TRACK_LANES = [0.1, 2.4, 4.7, 7.0];
+
   function build(kind, targetLen, rng) {
     const base = makeBase(kind, rng, targetLen);
     const rotation = kind === 'track' ? 0 : rng.float(0, TAU);
     const baseLen = polyLen(base.pts, base.closed);
+
+    // 田径场：单圈 400 m，圈数 = 里程 ÷ 400；逐圈换道，起终点落在 400 m 起跑线上
+    if (kind === 'track') {
+      const run = lapRun(base.pts, targetLen, TRACK_LANES, rng, { step: 2 });
+      return {
+        kind,
+        name: NAMES.track,
+        rotation: 0,
+        track: { halfL: 84.39 / 2, r: 36.8 },
+        multiLap: true,
+        points: run.pts,
+        bbox: bboxOf(run.pts),
+        laps: Math.round(run.laps * 100) / 100,
+        baseLen: Math.round(baseLen)
+      };
+    }
+
     const cycleLen = base.closed ? baseLen : baseLen * 2;
     const cycles = Math.max(0.6, targetLen / Math.max(120, cycleLen));
     const full = Math.floor(cycles);
@@ -195,7 +305,8 @@
 
   /* 手绘轨迹（用户在选点地图上描的线）：
      - 按等距柱状投影到以轨迹质心为原点的米坐标（y 向南为正，与渲染约定一致）
-     - 闭环：按目标里程换算圈数（描一圈操场、设 5 km → 自动跑 12 圈并带 ±0.5 m 换道漂移）
+     - 闭环：单圈长 = 描出来的环线周长，圈数 = 目标里程 ÷ 单圈长；
+       逐圈横向换道，轨迹呈一圈一圈分开的套圈（描一圈操场、设 5 km → 约 13 圈）
      - 非闭环：整条缩放到目标里程 */
   function buildUser(strokes, targetLen, rng) {
     const flat = [];
@@ -242,33 +353,50 @@
       need -= d;
       cur = m[i].slice();
     }
+    // 补齐重采样丢掉的尾段，否则单圈长会短掉最多 step 米
+    const lastIn = m[m.length - 1];
+    const lastRs = rs[rs.length - 1];
+    if (Math.hypot(lastIn[0] - lastRs[0], lastIn[1] - lastRs[1]) > 0.5) rs.push(lastIn.slice());
     if (rs.length < 2) rs.push(m[m.length - 1].slice());
 
     let rsLen = 0;
     for (let i = 1; i < rs.length; i++) rsLen += Math.hypot(rs[i][0] - rs[i - 1][0], rs[i][1] - rs[i - 1][1]);
     if (rsLen < 25) return null;
 
-    // 组装：闭环换圈数（封顶 60 圈，再多说明画的圈太小、目标里程太大，退化为整体缩放）
+    // 组装：闭环按 里程 ÷ 单圈长 换算圈数（封顶 60 圈，再多说明画的圈太小、
+    // 目标里程太大，退化为整体缩放）；逐圈横向换道，画出来就是一圈一圈的
     const jitter = Math.max(0.3, geoLen * 0.0012);
     let pts = [];
     let laps = 1;
+    let multiLap = false;
+    let lapFitted = false;
     if (closed && targetLen >= rsLen * 0.72 && targetLen / rsLen <= 60) {
       laps = Math.max(1, Math.round(targetLen / rsLen));
-      for (let c = 0; c < laps; c++) {
-        const ox = rng.float(-0.35, 0.35);
-        const oy = (c % 2 ? 1 : -1) * rng.float(0.15, 0.6);
-        for (const p of rs) pts.push([p[0] + ox + rng.gauss(0, jitter), p[1] + oy + rng.gauss(0, jitter)]);
-        pts.push([rs[0][0] + ox + rng.gauss(0, jitter), rs[0][1] + oy + rng.gauss(0, jitter)]);
-      }
+      const rb = bboxOf(rs);
+      const extent = Math.max(rb.maxX - rb.minX, rb.maxY - rb.minY);
+      const gap = Math.min(6, Math.max(0.9, extent * 0.022));
+      const nL = Math.min(4, Math.max(1, Math.floor(targetLen / rsLen)));
+      const lanes = [];
+      for (let i = 0; i < nL; i++) lanes.push((i - (nL - 1) / 2) * gap);
+      const run = lapRun(rs, targetLen, lanes, rng, {
+        step: Math.max(1.5, rsLen / 500),
+        jitter: Math.max(0.12, geoLen * 0.0004)
+      });
+      pts = run.pts;
+      multiLap = nL > 1;
+      lapFitted = true;
     } else {
       for (const p of rs) pts.push([p[0] + rng.gauss(0, jitter), p[1] + rng.gauss(0, jitter)]);
     }
 
-    // 统一缩放到目标里程（圈数取整后的余量也在这里消化掉）
-    let total = 0;
-    for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-    const k = targetLen / total;
-    pts = pts.map(p => [p[0] * k, p[1] * k]);
+    // 单圈轨迹整体缩放到目标里程；套圈轨迹保持描线原尺寸，
+    // 好和地图上的真实跑道对齐（实测折线比标称里程长约 5–10%，来自换道绕外圈）。
+    if (!lapFitted) {
+      let total = 0;
+      for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      const k = targetLen / total;
+      pts = pts.map(p => [p[0] * k, p[1] * k]);
+    }
     if (pts.length > 6000) {
       const stp = Math.ceil(pts.length / 6000);
       pts = pts.filter((_, i) => i % stp === 0 || i === pts.length - 1);
@@ -288,6 +416,7 @@
       rotation: 0,
       user: true,
       closed,
+      multiLap,
       origin: { lat: lat0, lon: lon0 },
       points: pts,
       bbox: { minX, maxX, minY, maxY },

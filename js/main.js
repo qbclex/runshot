@@ -289,7 +289,7 @@
   function demoUserTrack() {
     const latC = 40.0175, lonC = 116.3878;
     const ky = 111320, kx = 111320 * Math.cos(latC * Math.PI / 180);
-    const straight = 84.39, r = 36.5;          // 标准跑道直道长与半圆半径（米）
+    const straight = 84.39, r = 36.8;          // 标准跑道直道长与半圆半径（米，测量线）
     const pts = [];
     const add = (mx, my) => pts.push([latC + my / ky, lonC + mx / kx]);
     const arc = (cx, sign, from, to, n) => {
@@ -299,9 +299,9 @@
       }
     };
     add(-straight / 2, -r); add(straight / 2, -r);
-    arc(straight / 2, 1, -Math.PI / 2, Math.PI / 2, 24);   // 右半圆
+    arc(straight / 2, 1, -Math.PI / 2, Math.PI / 2, 24);   // 右半圆，向外鼓
     add(straight / 2, r); add(-straight / 2, r);
-    arc(-straight / 2, -1, Math.PI / 2, Math.PI * 1.5, 24); // 左半圆
+    arc(-straight / 2, 1, Math.PI / 2, Math.PI * 1.5, 24); // 左半圆，向外鼓
     return [pts];
   }
 
@@ -803,12 +803,13 @@
       const pts = rec.route.points;
       let len = 0;
       for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-      // 折线实测长度必然大于标称里程：每个点都叠加了 σ=0.38 m 的高斯 GPS 抖动，
-      // 抖动会把线段拉长（实测约 +3.7%）。真正的不变量是「圈数 × 单圈长 = 标称里程」。
+      // 折线实测长度必然大于标称里程：逐圈换道会绕外道（4 条道平均约 +5%），
+      // GPS 抖动还会再拉长一点。真正的不变量是「圈数 × 单圈长 = 标称里程」。
       check(Math.abs(rec.route.laps * rec.route.baseLen - 5210) / 5210 < 0.01,
         '跑道圈数×单圈长 ≠ 标称里程：' + rec.route.laps + ' × ' + rec.route.baseLen);
       check(len > 5210 * 0.98 && len < 5210 * 1.08, '跑道轨迹里程偏差过大 ' + (len / 5210 * 100).toFixed(2) + '%');
       check(rec.route.laps > 12 && rec.route.laps < 14, '跑道圈数换算异常 ' + rec.route.laps);
+      check(rec.route.multiLap === true && rec.route.baseLen === 400, '田径场应按标准 400 m 单圈分圈：' + rec.route.baseLen);
       check(rec.elev >= 0 && rec.elev <= 4, '田径场自动爬升应落在 0–4 m，实际 ' + rec.elev);
       const cvV = await window.Render.render(rec, { scale: 1, mapMode: 'procedural' });
       check(cvV.width === 360 && cvV.height === 800, '跑道画布尺寸异常');
@@ -857,7 +858,12 @@
       const pts = urecs[0].route.points;
       let len = 0;
       for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
-      check(Math.abs(len - 5210) / 5210 < 0.02, '手绘轨迹里程偏差 ' + (len / 5210 * 100).toFixed(2) + '%');
+      // 套圈轨迹保留描线原尺寸（与地图上的真实跑道对齐），换道绕外圈会让折线比标称里程长 5–10%；
+      // 标称里程的不变量仍是「圈数 × 单圈长」。
+      check(Math.abs(urecs[0].route.laps * urecs[0].route.baseLen - 5210) / 5210 < 0.01,
+        '手绘闭环 圈数×单圈长 ≠ 标称里程：' + urecs[0].route.laps + ' × ' + urecs[0].route.baseLen);
+      check(len > 5210 * 0.98 && len < 5210 * 1.15, '手绘轨迹里程偏差 ' + (len / 5210 * 100).toFixed(2) + '%');
+      check(urecs[0].route.multiLap === true, '手绘闭环应按里程分圈换道');
       check(urecs[0].route.laps >= 10, '闭环应按里程换算圈数，实际 ' + urecs[0].route.laps);
       check(urecs[0].route.closed === true, '体育场示例轨迹应识别为闭环');
       // 非闭环（开放路径）应整体缩放到目标里程
