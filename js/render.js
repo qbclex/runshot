@@ -70,7 +70,7 @@
     for (let i = 1; i < pts.length; i++) ctx.lineTo(view.X(pts[i][0]), view.Y(pts[i][1]));
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    // 套圈（跑道 / 闭环自定义地图）：线收细，才能看清一圈一圈的分道
+    // 套圈（跑道 / 闭环自定义地图）：线收细，压线处能看出是几股叠在一起
     const multiLap = !!(record.route && record.route.multiLap);
     ctx.strokeStyle = 'rgba(255,255,255,0.85)';
     ctx.lineWidth = multiLap ? 5 : 7.4;

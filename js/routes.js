@@ -50,42 +50,74 @@
     return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
   }
 
-  /* 按里程沿基准环线绕圈，每圈换一条「跑道」（向外横向平移），
-     换道在起跑线之后 blend 米内平滑过渡；末尾不足一圈按里程截断。
-     这样轨迹就是一圈一圈分开的，且起终点由里程与单圈长共同决定。
-     道次按「由内到外再折回」的三角波排列，相邻两圈只差一条道，换道不突兀。 */
+  /* 按里程沿基准环线绕圈。真实跑步不会每圈换到一条干净的新道：
+     更多时候是贴着上一条道、压线，或者只偏出去一点点。所以每圈的横向偏移
+     用「约四成半原地压住上一圈、其余走一道」的随机游走，再叠加跨圈连续的
+     GPS 慢漂（幅度 1~2 m）和每圈独立的径向小偏差，轨迹就一圈圈随机叠在一起、
+     部分路段互相压线，而不是整齐的同心圈。换道在起跑线之后 blend 米内平滑过渡，
+     末尾不足一圈按里程截断；起终点由里程与单圈长共同决定。 */
   function lapRun(basePts, targetLen, lanes, rng, opt) {
     opt = opt || {};
     const step = opt.step || 2;
-    const jit = opt.jitter == null ? 0.1 : opt.jitter;
+    const jit = opt.jitter == null ? 0.15 : opt.jitter;
+    const drift = opt.drift == null ? 1.6 : opt.drift;
     const tab = arcTable(basePts);
     const lapLen = tab.total;
     const blend = Math.min(opt.blend || 12, lapLen * 0.06);
-
     const nL = lanes.length;
-    const period = 2 * (nL - 1);
-    const laneIdx = (i) => {
-      if (nL < 2) return 0;
-      const k = ((i % period) + period) % period;
-      return k < nL ? k : period - k;
-    };
 
     let cx = 0, cy = 0;
     for (const p of basePts) { cx += p[0]; cy += p[1]; }
     cx /= basePts.length; cy /= basePts.length;
 
     const n = Math.max(24, Math.round(targetLen / step));
+    const nLaps = Math.ceil(targetLen / lapLen) + 2;
+
+    // 每圈的道次：从「家道次」出发做有反弹的随机游走，约四成半原地压住上一圈，
+    // 其余走一道、偶尔一次跨两道；再给每圈一个独立的径向小偏差，
+    // 避免轨迹落在几条整齐的等间距线上
+    const lapOff = new Array(nLaps);
+    const lapNoise = opt.lapNoise == null ? 0.6 : opt.lapNoise;
+    const home = Math.max(0, Math.min(nL - 1, opt.home == null ? Math.floor((nL - 1) / 2) : opt.home));
+    let li = home;
+    for (let k = 0; k < nLaps; k++) {
+      lapOff[k] = lanes[li] + rng.gauss(0, lapNoise);
+      const r = rng.float(0, 1);
+      if (r < 0.45) continue;
+      let d = r < 0.62 ? -1 : 1;
+      if (r > 0.93) d *= 2;
+      li += d;
+      if (li < 0) li = -li;
+      if (li > nL - 1) li = 2 * (nL - 1) - li;
+      li = Math.max(0, Math.min(nL - 1, li));
+    }
+    // 真实场地按测量线换算里程：把各圈横向偏移的均值归零，
+    // 免得整体偏到外道把折线长度拉长
+    if (opt.center) {
+      let m = 0;
+      for (let k = 0; k < nLaps; k++) m += lapOff[k];
+      m /= nLaps;
+      for (let k = 0; k < nLaps; k++) lapOff[k] -= m;
+    }
+
+    // 跨圈连续的横向慢漂：波长是单圈的一半上下，所以每圈的漂移相位不同，
+    // 相邻圈会在部分路段压在一起、部分路段分开
+    const A1 = drift, L1 = lapLen * rng.float(0.35, 0.6), p1 = rng.float(0, TAU);
+    const A2 = drift * 0.15, L2 = lapLen * rng.float(0.25, 0.4), p2 = rng.float(0, TAU);
+
     const dS = Math.min(3, lapLen * 0.01);
     const pts = new Array(n);
     for (let i = 0; i < n; i++) {
       const s = targetLen * i / (n - 1);
       const q = sampleArc(basePts, tab, s);
       const lapI = Math.floor(s / lapLen);
-      const lane = lanes[laneIdx(lapI)];
-      const prev = lanes[laneIdx(lapI - 1)];
-      const t = Math.min(1, (s - lapI * lapLen) / blend);
-      const w = t * t * (3 - 2 * t);
-      const off = lapI === 0 ? lane : prev + (lane - prev) * w;
+      let off = lapOff[lapI];
+      if (lapI > 0) {
+        const t = Math.min(1, (s - lapI * lapLen) / blend);
+        const w = t * t * (3 - 2 * t);
+        off = lapOff[lapI - 1] + (off - lapOff[lapI - 1]) * w;
+      }
+      off += A1 * Math.sin(TAU * s / L1 + p1) + A2 * Math.sin(TAU * s / L2 + p2);
 
       // 切向取前后 dS 米的割线：手绘折线的锯齿不至于让法线逐点乱跳，
       // 否则横向偏移一放大，轨迹就会被拉长
@@ -222,9 +254,9 @@
     const rotation = kind === 'track' ? 0 : rng.float(0, TAU);
     const baseLen = polyLen(base.pts, base.closed);
 
-    // 田径场：单圈 400 m，圈数 = 里程 ÷ 400；逐圈换道，起终点落在 400 m 起跑线上
+    // 田径场：单圈 400 m，圈数 = 里程 ÷ 400；逐圈随机漂移压线，起终点落在 400 m 起跑线上
     if (kind === 'track') {
-      const run = lapRun(base.pts, targetLen, TRACK_LANES, rng, { step: 2 });
+      const run = lapRun(base.pts, targetLen, TRACK_LANES, rng, { step: 2, jitter: 0.1, drift: 1.7, home: 0 });
       return {
         kind,
         name: NAMES.track,
@@ -380,7 +412,8 @@
       for (let i = 0; i < nL; i++) lanes.push((i - (nL - 1) / 2) * gap);
       const run = lapRun(rs, targetLen, lanes, rng, {
         step: Math.max(1.5, rsLen / 500),
-        jitter: Math.max(0.12, geoLen * 0.0004)
+        jitter: Math.max(0.12, geoLen * 0.0004),
+        drift: Math.min(2.2, gap * 0.55)
       });
       pts = run.pts;
       multiLap = nL > 1;
